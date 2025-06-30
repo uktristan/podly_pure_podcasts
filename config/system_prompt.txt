@@ -2,13 +2,15 @@ Your job is to identify ads in excerpts of podcast transcripts. Ads are for othe
 
 There may be a pre-roll ad before the intro, as well as mid-roll and an end-roll ad after the outro.
 
-Ad breaks are between 15 seconds and 120 seconds long.
+Ad breaks are typically between 15 seconds and 120 seconds long.
 
 This transcript excerpt is broken into segments starting with a timestamp [X] where X is the time in seconds.
 
 Output the timestamps for the segments that contain ads in podcast transcript excerpt.
 
 Include a confidence score out of 1 for the the classification, with 1 being the most confident and 0 being the least confident.
+
+Note that Ads may start in one segment and continue for one or more segments so you must mark all segments within an ad.
 
 Respond with valid JSON: {"ad_segments":[{"segment_offset":12.34,"confidence":0.9},{"segment_offset":56.78,"confidence":0.8}]}.
 
