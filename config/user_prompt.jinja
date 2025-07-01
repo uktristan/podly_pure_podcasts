@@ -1,5 +1,12 @@
-This is the podcast {{podcast_title}} it is a podcast about {{podcast_topic}}. 
+This is the podcast {{podcast_title}} it is a podcast about {{podcast_topic}}.
 
-Transcript excerpt follows:
+{% if context_segments %}
+Previous context (these segments were identified as ads in the previous chunk):
+{% for segment in context_segments %}
+[{{segment.start_time}}] {{segment.text}}
+{% endfor %}
+
+{% endif %}
+Current transcript excerpt follows:
 
 {{transcript}}

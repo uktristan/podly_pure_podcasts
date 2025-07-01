@@ -11,6 +11,9 @@ class ProcessingConfig(BaseModel):
     system_prompt_path: str
     user_prompt_template_path: str
     num_segments_to_input_to_prompt: int
+    # Cross-chunk context settings for ads that span multiple chunks
+    context_segments_from_previous_chunk: int = 5
+    enable_cross_chunk_context: bool = True
 
 
 class OutputConfig(BaseModel):
@@ -63,6 +66,8 @@ class Config(BaseModel):
     server: Optional[str] = None
     backend_server_port: int = 5002
     frontend_server_port: int = 5001
+    public_host: Optional[str] = None  # For public IP/domain access
+    enable_public_access: bool = False  # Security flag for public deployments
     background_update_interval_minute: Optional[int] = None
     job_timeout: int = 10800  # Default to 3 hours if not set
     threads: int = 1

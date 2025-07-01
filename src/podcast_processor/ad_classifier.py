@@ -64,15 +64,38 @@ class AdClassifier:
             return
 
         num_segments_per_prompt = self.config.processing.num_segments_to_input_to_prompt
+        previous_chunk_context_segments = []
+        
         for i in range(0, len(transcript_segments), num_segments_per_prompt):
+            end_idx = min(i + num_segments_per_prompt, len(transcript_segments))
+            
+            # Get context segments from previous chunk if cross-chunk context is enabled
+            context_segments = []
+            if (self.config.processing.enable_cross_chunk_context and 
+                i > 0 and previous_chunk_context_segments):
+                context_segments = previous_chunk_context_segments
+                self.logger.info(
+                    f"Using {len(context_segments)} context segments from previous chunk for post {post.id}, chunk starting at {i}."
+                )
+            
             self._process_segment_chunk(
                 transcript_segments=transcript_segments,
                 start_idx=i,
-                end_idx=min(i + num_segments_per_prompt, len(transcript_segments)),
+                end_idx=end_idx,
                 system_prompt=system_prompt,
                 user_prompt_template=user_prompt_template,
                 post=post,
+                context_segments=context_segments,
             )
+            
+            # Update context for next chunk if cross-chunk context is enabled
+            if self.config.processing.enable_cross_chunk_context:
+                previous_chunk_context_segments = self._get_context_segments_for_next_chunk(
+                    transcript_segments=transcript_segments,
+                    start_idx=i,
+                    end_idx=end_idx,
+                    post=post,
+                )
 
     def _process_segment_chunk(
         self,
@@ -83,6 +106,7 @@ class AdClassifier:
         system_prompt: str,
         user_prompt_template: Template,
         post: Post,
+        context_segments: Optional[List[TranscriptSegment]] = None,
     ) -> None:
         """Process a chunk of transcript segments for classification."""
         current_chunk_db_segments = transcript_segments[start_idx:end_idx]
@@ -103,6 +127,7 @@ class AdClassifier:
             start_idx=start_idx,
             end_idx=end_idx,
             total_segments=len(transcript_segments),
+            context_segments=context_segments,
         )
 
         model_call = self._get_or_create_model_call(
@@ -141,12 +166,21 @@ class AdClassifier:
         start_idx: int,
         end_idx: int,
         total_segments: int,
+        context_segments: Optional[List[TranscriptSegment]] = None,
     ) -> str:
         """Generate the user prompt string for the LLM."""
         temp_pydantic_segments_for_prompt = [
             Segment(start=db_seg.start_time, end=db_seg.end_time, text=db_seg.text)
             for db_seg in current_chunk_db_segments
         ]
+
+        # Convert context segments to the format expected by the template
+        context_segments_for_template = None
+        if context_segments:
+            context_segments_for_template = [
+                {"start_time": seg.start_time, "text": seg.text}
+                for seg in context_segments
+            ]
 
         return user_prompt_template.render(
             podcast_title=post.title,
@@ -156,6 +190,7 @@ class AdClassifier:
                 includes_start=(start_idx == 0),
                 includes_end=(end_idx == total_segments),
             ),
+            context_segments=context_segments_for_template,
         )
 
     def _get_or_create_model_call(
@@ -447,6 +482,88 @@ class AdClassifier:
             f"Waiting {wait_time}s before next retry for ModelCall {model_call_obj.id}."
         )
         time.sleep(wait_time)
+
+    def _get_context_segments_for_next_chunk(
+        self,
+        *,
+        transcript_segments: List[TranscriptSegment],
+        start_idx: int,
+        end_idx: int,
+        post: Post,
+    ) -> List[TranscriptSegment]:
+        """
+        Get context segments from the current chunk to use in the next chunk.
+        
+        Returns segments from the end of the current chunk that were identified as ads,
+        up to the configured maximum number of context segments.
+        
+        Args:
+            transcript_segments: All transcript segments for the post
+            start_idx: Start index of the current chunk
+            end_idx: End index of the current chunk
+            post: Post being processed
+            
+        Returns:
+            List of TranscriptSegment objects to use as context for the next chunk
+        """
+        if end_idx >= len(transcript_segments):
+            # This is the last chunk, no context needed for next chunk
+            return []
+            
+        current_chunk_segments = transcript_segments[start_idx:end_idx]
+        if not current_chunk_segments:
+            return []
+            
+        # Get the last N segments from the current chunk to check for ad identifications
+        max_context_segments = self.config.processing.context_segments_from_previous_chunk
+        potential_context_segments = current_chunk_segments[-max_context_segments:]
+        
+        # Find which of these segments have been identified as ads
+        context_segments = []
+        for segment in potential_context_segments:
+            # Check if this segment has any ad identifications
+            ad_identification = (
+                self.identification_query.filter_by(
+                    transcript_segment_id=segment.id,
+                    label="ad",
+                )
+                .filter(Identification.confidence >= self.config.output.min_confidence)
+                .first()
+            )
+            
+            if ad_identification:
+                context_segments.append(segment)
+                self.logger.debug(
+                    f"Segment {segment.id} (time {segment.start_time:.1f}s) identified as ad context for next chunk in post {post.id}"
+                )
+        
+        # If we found ad segments, include some trailing segments for better context
+        if context_segments:
+            # Get the index of the last ad segment in the potential context
+            last_ad_segment_idx = None
+            for i, segment in enumerate(potential_context_segments):
+                if segment in context_segments:
+                    last_ad_segment_idx = i
+                    
+            if last_ad_segment_idx is not None:
+                # Include segments from the first ad segment to the end of the chunk
+                # This ensures we capture the full context around the ad
+                first_ad_segment_idx = None
+                for i, segment in enumerate(potential_context_segments):
+                    if segment in context_segments:
+                        first_ad_segment_idx = i
+                        break
+                        
+                if first_ad_segment_idx is not None:
+                    # Return all segments from first ad to end of potential context
+                    context_segments = potential_context_segments[first_ad_segment_idx:]
+                    
+                    self.logger.info(
+                        f"Prepared {len(context_segments)} context segments for next chunk in post {post.id} "
+                        f"(segments {context_segments[0].sequence_num}-{context_segments[-1].sequence_num})"
+                    )
+        
+        return context_segments
 
     def _handle_retry_exhausted(
         self,

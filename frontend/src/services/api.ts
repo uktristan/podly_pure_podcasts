@@ -1,11 +1,59 @@
 import axios from 'axios';
 import type { Feed, Episode } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5002';
+// Dynamic API URL resolution for public IP support
+function getApiBaseUrl(): string {
+  // First check for build-time environment variable
+  const buildTimeUrl = import.meta.env.VITE_API_URL;
+  if (buildTimeUrl && buildTimeUrl !== 'DYNAMIC') {
+    return buildTimeUrl;
+  }
+
+  // For dynamic resolution, use the current host with backend port
+  const currentHost = window.location.hostname;
+  const protocol = window.location.protocol;
+  
+  // Default backend port (can be overridden by VITE_BACKEND_PORT)
+  const backendPort = import.meta.env.VITE_BACKEND_PORT || '5002';
+  
+  // If we're on localhost, use localhost
+  if (currentHost === 'localhost' || currentHost === '127.0.0.1') {
+    return `${protocol}//${currentHost}:${backendPort}`;
+  }
+  
+  // For public IPs/domains, try the same host with backend port
+  return `${protocol}//${currentHost}:${backendPort}`;
+}
+
+const API_BASE_URL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
 });
+
+// Add request interceptor for debugging in development
+if (import.meta.env.DEV) {
+  api.interceptors.request.use(
+    (config) => {
+      console.log(`API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+      return config;
+    },
+    (error) => {
+      console.error('API Request Error:', error);
+      return Promise.reject(error);
+    }
+  );
+
+  api.interceptors.response.use(
+    (response) => {
+      return response;
+    },
+    (error) => {
+      console.error('API Response Error:', error.response?.status, error.response?.data || error.message);
+      return Promise.reject(error);
+    }
+  );
+}
 
 export const feedsApi = {
   getFeeds: async (): Promise<Feed[]> => {
@@ -280,4 +328,4 @@ export const feedsApi = {
   getEpisodeOriginalDownloadUrl: (guid: string): string => {
     return feedsApi.getPostOriginalDownloadUrl(guid);
   },
-}; 
+};

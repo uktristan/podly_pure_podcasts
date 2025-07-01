@@ -30,12 +30,16 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        - VITE_API_URL=${VITE_API_URL:-http://localhost:5002}
+        - VITE_API_URL=${VITE_API_URL:-DYNAMIC}
+        - VITE_BACKEND_PORT=${VITE_BACKEND_PORT:-5002}
     ports:
       - 5001:80
     depends_on:
       - backend
     restart: unless-stopped
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-DYNAMIC}
+      - VITE_BACKEND_PORT=${VITE_BACKEND_PORT:-5002}
     healthcheck:
        test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5001/')"]
        interval: 30s

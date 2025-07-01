@@ -11,6 +11,9 @@ llm_api_key: sk-proj-XXXXXXXXXXXXXXXXXXXXXXXX
 
 # server: http://my.domain.com
 # backend_server_port: 5002
+# frontend_server_port: 5001
+# public_host: your-public-ip-or-domain.com
+# enable_public_access: false
 # threads: 5
 
 
@@ -34,6 +37,9 @@ processing:
   system_prompt_path: config/system_prompt.txt
   user_prompt_template_path: config/user_prompt.jinja
   num_segments_to_input_to_prompt: 30
+  # Cross-chunk context for ads that span multiple chunks
+  context_segments_from_previous_chunk: 5  # Number of segments to include as context
+  enable_cross_chunk_context: true         # Feature flag to enable/disable context
 
 output:
   fade_ms: 3000

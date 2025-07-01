@@ -68,6 +68,8 @@ def create_app() -> Flask:
 
     # Configure CORS
     default_origins = [f"http://localhost:{config.frontend_server_port}"]
+    
+    # Add configured server origins
     if config.server:
         server_url = config.server
         if not server_url.startswith(("http://", "https://")):
@@ -80,14 +82,38 @@ def create_app() -> Flask:
         # Also add the server URL without port for cases where it's served on port 80/443
         if not server_url.endswith((":80", ":443")):
             default_origins.append(server_url)
+    
+    # Add public host origins if configured
+    if config.public_host:
+        public_url = config.public_host
+        if not public_url.startswith(("http://", "https://")):
+            public_url = f"http://{public_url}"
+        
+        # Add both with and without frontend port
+        default_origins.append(f"{public_url}:{config.frontend_server_port}")
+        if not public_url.endswith((":80", ":443")):
+            default_origins.append(public_url)
+        
+        # Also add HTTPS variants for public hosts
+        https_url = public_url.replace("http://", "https://")
+        default_origins.append(f"{https_url}:{config.frontend_server_port}")
+        if not https_url.endswith((":80", ":443")):
+            default_origins.append(https_url)
 
-    cors_origins = os.environ.get("CORS_ORIGINS", ",".join(default_origins)).split(",")
+    # Handle wildcard CORS for public access (use with caution)
+    cors_origins_env = os.environ.get("CORS_ORIGINS", ",".join(default_origins))
+    if config.enable_public_access and cors_origins_env == "*":
+        cors_origins = ["*"]
+        logger.warning("CORS configured for wildcard access - ensure this is intended for public deployment")
+    else:
+        cors_origins = cors_origins_env.split(",")
+
     CORS(
         app,
         resources={r"/*": {"origins": cors_origins}},
         allow_headers=["Content-Type", "Authorization", "Range"],
         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        supports_credentials=True,
+        supports_credentials=True if cors_origins != ["*"] else False,
     )
 
     # Load scheduler configuration

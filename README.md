@@ -152,17 +152,75 @@ Podly supports multiple options for audio transcription:
 
 To use Groq for transcription, you'll need a Groq API key. Copy the `config/config_groq_whisper.yml.example` to `config/config.yml` and update the `api_key` field with your Groq API key.
 
-## Remote Setup
+## Public IP / Port Forwarding Setup
 
-Podly works out of the box when running locally (see [Usage](#usage)). To run it on a remote server add SERVER to config/config.yml
+Podly can be configured to work with public IP addresses and port forwarding for external access. This is useful when you want to access your Podly instance from outside your local network.
 
+### Quick Setup
+
+Use the automated setup script:
+
+```bash
+# Interactive setup wizard
+python3 scripts/setup_public_access.py --interactive
+
+# Or configure directly
+python3 scripts/setup_public_access.py --host your-public-ip.com
 ```
-SERVER=http://my.domain.com
+
+### Manual Configuration
+
+1. **Update your config.yml**:
+   ```yaml
+   # Enable public access features
+   enable_public_access: true
+   
+   # Set your public IP or domain
+   public_host: your-public-ip-or-domain.com
+   
+   # Configure ports (must match your port forwarding)
+   backend_server_port: 5002
+   frontend_server_port: 5001
+   ```
+
+2. **Set up environment variables**:
+   ```bash
+   export VITE_API_URL=DYNAMIC  # Enables dynamic API URL resolution
+   export VITE_BACKEND_PORT=5002
+   ```
+
+3. **Configure port forwarding** on your router:
+   - Forward port 5001 → your server (frontend)
+   - Forward port 5002 → your server (backend)
+
+4. **Run with Docker**:
+   ```bash
+   docker-compose up --build
+   ```
+
+### Access Your Instance
+
+Once configured, access Podly at: `http://your-public-ip:5001`
+
+### Troubleshooting
+
+- **Frontend can't connect to backend**: Check browser console for API errors
+- **CORS errors**: Set `CORS_ORIGINS=*` environment variable (less secure)
+- **Connection refused**: Verify port forwarding and firewall settings
+
+For detailed setup instructions, see [docs/public_ip_deployment.md](docs/public_ip_deployment.md).
+
+## Remote Setup (Legacy)
+
+For traditional reverse proxy setups, you can configure Podly to work behind a proxy by setting the SERVER in config/config.yml:
+
+```yaml
+server: http://my.domain.com
 ```
 
-Podly supports basic authentication. See below for example setup for `httpd.conf`.
+Podly supports basic authentication. See below for example setup for `httpd.conf`:
 
-```
+```apache
 LoadModule proxy_module modules/mod_proxy.so
 LoadModule proxy_http_module modules/mod_proxy_http.so
 
@@ -183,11 +241,11 @@ SetEnv proxy-chain-auth On
 
 Add users by running:
 
-```
+```bash
 sudo htpasswd -c /lib/protected.users [username]
 ```
 
-Some apps will support basic auth in the URL like http://[username]:[pass]@my.domain.com
+Some apps will support basic auth in the URL like `http://[username]:[pass]@my.domain.com`
 
 ## Ubuntu Service
 
